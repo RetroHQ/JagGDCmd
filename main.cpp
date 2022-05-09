@@ -43,14 +43,17 @@ int __cdecl _tmain(int argc, const char* argv[], const char* envp[])
 	{
 		printf(	"%s [commands]\n\n"\
 				"-r          Reboot\n"\
-				"-rd         Reboot to debug stub\n\n"\
+				"-rd         Reboot to debug stub\n"\
+				"-rr         Reboot and keep current ROM\n"\
+				"-wf file    Write file to memory card\n\n"\
 				"From stub mode (all ROM, RAM > $2000) --\n"\
-				"-u[x] file[,a:addr,s:size,o:offset,x:entry]\n"\
-				"            Upload to address with size and file offset and optionally execute.\n"\
+				"-u[x[r]] file[,a:addr,s:size,o:offset,x:entry]\n"\
+				"            Upload to address with size and file offset and optionally eXecute directly or via Reboot.\n"\
 				"            Prefix numbers with $ or 0x for hex, otherwise decimal assumed.\n"\
 				"-e file[,size]\n"\
 				"            Enable eeprom file on memory card with given size (in byes, default 128)\n"\
 				"-x addr     Execute from address\n"\
+				"-xr         Execute via reboot\n"\
 				"-q          Quiet, use first to suppress all non-error messages\n\n",
 				argv[0]);
 	}
@@ -59,6 +62,7 @@ int __cdecl _tmain(int argc, const char* argv[], const char* envp[])
 		if (cJagGD.Connect() == ERROR_SUCCESS)
 		{
 			bool bExecute = false;
+			bool bReboot = false;
 			DWORD entry = 0;
 			const char **arg = argv+1; // 0 is exe path
 			while (--argc)
@@ -74,18 +78,27 @@ int __cdecl _tmain(int argc, const char* argv[], const char* envp[])
 				
 				if (_stricmp(*arg, "-r") == 0)
 				{
-					cJagGD.Reset(false);
-					if (!bQuiet) printf("Reboot\n");
+					cJagGD.Reset(EResetType_Menu);
+					if (!bQuiet) printf("Reboot (Menu)\n");
 				}
 				
 			//-- Reset to debug stub
 				
 				else if (_stricmp(*arg, "-rd") == 0)
 				{
-					cJagGD.Reset(true);
+					cJagGD.Reset(EResetType_Debug);
 					if (!bQuiet) printf("Reboot (Debug Console)\n");
+					Sleep(1500);
 				}
 				
+			//-- Reset to current ROM
+				
+				else if (_stricmp(*arg, "-rr") == 0)
+				{
+					cJagGD.Reset(EResetType_ROM);
+					if (!bQuiet) printf("Reboot (ROM)\n");
+				}
+
 			//-- Enable EEPROM with given parameters
 				
 				else if (_stricmp(*arg, "-e") == 0)
@@ -142,14 +155,37 @@ int __cdecl _tmain(int argc, const char* argv[], const char* envp[])
 						}
 					}
 				}
+
+			//-- Write file to memory card
 				
-			//-- Upload / upload and execute
-				
-				else if (_stricmp(*arg, "-u") == 0 || _stricmp(*arg, "-ux") == 0)
+				else if (stricmp(*arg, "-wf") == 0)
 				{
 					if (argc)
 					{
-						bExecute = _stricmp(*arg, "-ux") == 0;
+						arg++;
+						argc--;
+						if (!bQuiet) printf("WRITE FILE (%s)... ", *arg);
+
+						if (cJagGD.WriteFile(*arg) == ERROR_SUCCESS)
+						{
+							if (!bQuiet) printf("OK!\n");
+						}
+						else
+						{
+							if (bQuiet) printf("WRITE FILE ");
+							printf("FAILED!\n");
+						}
+					}
+				}
+
+			//-- Upload / upload and execute
+				
+				else if (_stricmp(*arg, "-u") == 0 || _stricmp(*arg, "-ux") == 0 || _stricmp(*arg, "-uxr") == 0)
+				{
+					if (argc)
+					{
+						bExecute = _strnicmp(*arg, "-ux", 3) == 0;
+						bReboot = _stricmp(*arg, "-uxr") == 0;
 						argc--;
 						arg++;
 
@@ -375,19 +411,31 @@ int __cdecl _tmain(int argc, const char* argv[], const char* envp[])
 						entry = StringToNumber(*arg);
 					}
 				}
+				else if (_stricmp(*arg, "-xr") == 0)
+				{
+					bExecute = true;
+					bReboot = true;
+				}
 				arg++;
 			}
 
 			// and finally execute if required
-			if (!bQuiet) printf("EXECUTING $%x... ", entry);
-			if (cJagGD.Execute(entry) == ERROR_SUCCESS)
+			if (bExecute)
 			{
-				if (!bQuiet) printf("OK!\n");
-			}
-			else
-			{
-				if (bQuiet) printf("EXECUTE ");
-				printf("FAILED!\n");
+				if (!bQuiet)
+				{
+					if (bReboot) printf("REBOOTING... ");
+					else printf("EXECUTING $%x... ", entry);
+				}
+				if (cJagGD.Execute(bReboot ? EXEC_REBOOT : entry) == ERROR_SUCCESS)
+				{
+					if (!bQuiet) printf("OK!\n");
+				}
+				else
+				{
+					if (bQuiet) printf("EXECUTE ");
+					printf("FAILED!\n");
+				}
 			}
 		}
 		else
