@@ -346,7 +346,9 @@ DWORD CJagGDCmd::WriteFile(const char* pFilename)
 
 	// file operation command
 	SJagGDCommandFileOperation cmd;
+	memset(&cmd, 0, sizeof(cmd));
 	cmd.nCmdSize = sizeof(SJagGDCommandFileOperation);
+	strncpy(cmd.szFilename, pFilename, sizeof(cmd.szFilename) - 1);
 	cmd.nCommand = ECmd_WriteFile;
 	cmd.nSize = size;
 
